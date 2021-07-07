@@ -1,1 +1,1 @@
-# Intune-Proactive-Remediation-scripts
+# Intune Proactive Remediation scripts
