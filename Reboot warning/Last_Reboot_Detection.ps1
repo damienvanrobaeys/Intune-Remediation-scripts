@@ -38,7 +38,7 @@ If($Last_boot -eq $null)
 	}
 Else
 	{
-		If($Last_reboot -gt $Last_boot)
+		If($Last_reboot -ge $Last_boot)
 			{
 				$Uptime = $Last_reboot
 			}
