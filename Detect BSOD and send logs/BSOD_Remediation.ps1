@@ -90,7 +90,6 @@ Function Install_Import_Module
 			}	
 	}
 	
-$DMP_Logs_folder = "C:\Windows\Temp"
 Function Export_Event_Logs
 	{
 		param(
