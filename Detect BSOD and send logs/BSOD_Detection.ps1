@@ -400,7 +400,7 @@ If(test-path $Minidump_Folder)
 				$Get_last_BugCheck_Event = (Get-EventLog system -Source bugcheck)[0]
 				$Get_last_BugCheck_Event_Date = $Get_last_BugCheck_Event.TimeGenerated
 				$Get_last_BugCheck_Event_MSG = $Get_last_BugCheck_Event.Message				
-				If($Get_last_BugCheck_Event_Date -match $Last_DMP)
+				If($Get_last_BugCheck_Event_Date -match $Last_DMP_Date)
 					{
 						Write_Log -Message_Type "INFO" -Message "A corresponding entry has been found in the event log"
 						Write_Log -Message_Type "INFO" -Message "Event log time: $Get_last_BugCheck_Event_Date"
