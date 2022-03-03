@@ -388,10 +388,10 @@ $myHashTable = @{
 $Minidump_Folder = "C:\Windows\Minidump"
 If(test-path $Minidump_Folder)
 	{
-		$All_DMP = Get-Childitem $Minidump_Folder | where {$_.Extension -eq ".dmp"} | select name, LastWriteTime
+		$Last_DMP = Get-Childitem $Minidump_Folder | where {$_.Extension -eq ".dmp"} | Sort-Object -Descending -Property LastWriteTime | Select -First 1
+		$Last_DMP_Date = $Last_DMP.LastWriteTime
 		$Current_date = Get-Date
-		$Last_DMP = $All_DMP[-1].LastWriteTime
-		$Last_DMP_delay = ($Current_date - $Last_DMP).Days
+		$Last_DMP_delay = ($Current_date - $Last_DMP_Date).Days
 		If($Last_DMP_delay -le $Delay_alert)
 			{
 				Write_Log -Message_Type "INFO" -Message "A recent BSOD has been found"
