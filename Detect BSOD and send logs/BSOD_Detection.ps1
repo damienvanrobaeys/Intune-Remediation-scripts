@@ -385,6 +385,9 @@ $myHashTable = @{
 	"0xDEADDEAD" = "MANUALLY_INITIATED_CRASH1"
 }	
 
+0x0000001a
+0X0000001A 
+
 $Minidump_Folder = "C:\Windows\Minidump"
 If(test-path $Minidump_Folder)
 	{
@@ -417,6 +420,8 @@ If(test-path $Minidump_Folder)
 						$Get_Code = $Get_last_BugCheck_Event_MSG.split("(").split(":")[1].Trim()																
 						If($Get_Code -ne $null)
 							{
+								# $Get_Code = $Get_Code.toupper()
+								$Get_Code = ($Get_Code.replace("'","")).toupper()								
 								$Error_code = $myHashTable.GetEnumerator() | Select-Object -Property Key,Value 
 								$Get_Error_Label = ($Error_code | Where {$_.Key -eq $Get_Code}).Value							
 							}
