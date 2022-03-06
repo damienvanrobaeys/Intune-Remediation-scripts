@@ -1,12 +1,34 @@
-$Log_File = "C:\Windows\Debug\BSOD_Remediation.log"
-$Temp_folder = "C:\Windows\Temp"
-$DMP_Logs_folder = "$Temp_folder\DMP_Logs_folder"
-$DMP_Logs_folder_ZIP = "$Temp_folder\BSOD_$env:computername.zip"
 
+
+#***********************************************************************************
+# 									Part to fill
+#***********************************************************************************
 $ClientID = "" # Your SharePoint app client ID
 $Secret = '' # Your SharePoint app client ID	
 $Site_URL = "" # Your SharePoint site URL
 $Folder_Location = "" # Folder on your site where to upload logs
+$Use_Webhook = $False # Choose if you want to publish on a Teams channel(True or False)
+$Webhook = "" # Type the path of the webhook
+
+<# To create a webhook proceed as below:
+1. Go to your channel
+2. Click on the ...
+3. Click on Connectors
+4. Go to Incoming Webhook
+5. Type a name
+6. Click on Create
+7. Copy the Webhot path
+#>
+#***********************************************************************************
+# 									Part to fill
+#***********************************************************************************
+
+$Log_File = "C:\Windows\Debug\BSOD_Remediation.log"
+$Temp_folder = "C:\Windows\Temp"
+$DMP_Logs_folder = "$Temp_folder\DMP_Logs_folder"
+$ZIP_Name = "BSOD_$env:computername.zip"
+$DMP_Logs_folder_ZIP = "$Temp_folder\$ZIP_Name"
+
 
 Function Write_Log
 	{
@@ -174,14 +196,35 @@ Try
 	{
 		Add-PnPFile -Path $DMP_Logs_folder_ZIP -Folder $Folder_Location | out-null				
 		Write_Log -Message_Type "SUCCESS" -Message "Uploading file to SharePoint"	
-		Disconnect-pnponline			
 	}
 Catch
 	{
 		Write_Log -Message_Type "ERROR" -Message "Uploading file to SharePoint"	
 		write-output "Failed step: Uploading file to SharePoint"
-		Disconnect-pnponline	
 	}																						
 
 
+If($Use_Webhook -eq $True)
+	{
+		$Date = get-date
+		$MessageText = "A new BSOD occured on device <b>$env:computername</b>.<br><br>Date: $Date<br>Logs files have been uploaded in the below ZIP file: $ZIP_Name"
+		$MessageTitle = "A new BSOD ZIP has been uploaded"
+		$MessageColor = "#2874A6"
 
+		$Body = @{
+		'text'= $MessageText
+		'Title'= $MessageTitle
+		'themeColor'= $MessageColor
+		}
+
+
+		$Params = @{
+				 Headers = @{'accept'='application/json'}
+				 Body = $Body | ConvertTo-Json
+				 Method = 'Post'
+				 URI = $Webhook 
+		}
+		Invoke-RestMethod @Params
+	}
+
+Disconnect-pnponline	
