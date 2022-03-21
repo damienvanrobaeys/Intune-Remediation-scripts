@@ -2,6 +2,12 @@
 # 									Variables to fill
 ##################################################################################################
 
+<#
+Set there when to display the alert, 
+If the free space perdent on the disk is below alue in variable $Percent_Alert the notification will be displayed
+#>
+$Percent_Alert = 20
+
 #***********************************************************
 # HTML Report part
 #***********************************************************
@@ -28,6 +34,7 @@ $Report_Logo_Picture_Base64 = "iVBORw0KGgoAAAANSUhEUgAAAgYAAAHNCAYAAABl+LNKAAAAC
 #***********************************************************
 
 
+
 #***********************************************************
 # Toast notif part
 #***********************************************************
@@ -46,13 +53,14 @@ $Picture_Base64 = "iVBORw0KGgoAAAANSUhEUgAAAlgAAAE1CAIAAAC0hgmSAAAACXBIWXMAAA7DA
 $Use_Good_Pratices_Btn = $True # Choose to display the "See good practices" button
 # If $Use_Good_Pratices_Btn = True, add the link of the good pratices link, on the web
 $Good_Pratices_Link = ""
-$Toast_Title = "You have less than 10% of disk space left on your disk"
+$Toast_Title = "You have less than $Percent_Alert % of disk space left on your disk"
 $Toast_Message = "To ensure the stability and proper functioning of your system, consider sorting your data."
 $Toast_Button1_Text = "See good practices" # Text to display in the first button, if $Use_Good_Pratices_Btn = True
 $Toast_Button2_Text = "See larger content" # Text to display in the second button
 $Toast_Button1_Explanation_Text = "Click on «$Toast_Button1_Text» to understand how to save space on your disk."
 $Toast_Button2_Explanation_Text = "Click «$Toast_Button2_Text» to list which folder(s) and file(s) take a lot of space on your disk."
 $Toast_Attribution = "Syst and Deploy"
+$Text_AppName = "Syst and Deploy informs you"
 
 #***********************************************************
 # Toast notif part
@@ -62,6 +70,43 @@ $Toast_Attribution = "Syst and Deploy"
 ##################################################################################################
 # 									Variables to fill
 ##################################################################################################
+
+
+
+Function Register-NotificationApp($AppID,$AppDisplayName) {
+    [int]$ShowInSettings = 0
+    $AppRegPath = "HKCU:\Software\Classes\AppUserModelId"
+    $RegPath = "$AppRegPath\$AppID"
+	
+	$Notifications_Reg = 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Notifications\Settings'
+	If(!(Test-Path -Path "$Notifications_Reg\$AppID")) 
+		{
+			New-Item -Path "$Notifications_Reg\$AppID" -Force
+			New-ItemProperty -Path "$Notifications_Reg\$AppID" -Name 'ShowInActionCenter' -Value 1 -PropertyType 'DWORD' -Force
+		}
+
+	If((Get-ItemProperty -Path "$Notifications_Reg\$AppID" -Name 'ShowInActionCenter' -ErrorAction SilentlyContinue).ShowInActionCenter -ne '1') 
+		{
+			New-ItemProperty -Path "$Notifications_Reg\$AppID" -Name 'ShowInActionCenter' -Value 1 -PropertyType 'DWORD' -Force
+		}	
+		
+    try {
+        if (-NOT(Test-Path $RegPath)) {
+            New-Item -Path $AppRegPath -Name $AppID -Force | Out-Null
+        }
+        $DisplayName = Get-ItemProperty -Path $RegPath -Name DisplayName -ErrorAction SilentlyContinue | Select -ExpandProperty DisplayName -ErrorAction SilentlyContinue
+        if ($DisplayName -ne $AppDisplayName) {
+            New-ItemProperty -Path $RegPath -Name DisplayName -Value $AppDisplayName -PropertyType String -Force | Out-Null
+        }
+        $ShowInSettingsValue = Get-ItemProperty -Path $RegPath -Name ShowInSettings -ErrorAction SilentlyContinue | Select -ExpandProperty ShowInSettings -ErrorAction SilentlyContinue
+        if ($ShowInSettingsValue -ne $ShowInSettings) {
+            New-ItemProperty -Path $RegPath -Name ShowInSettings -Value $ShowInSettings -PropertyType DWORD -Force | Out-Null
+        }
+    }
+    catch {}
+}
+
+
 
 Function Format_Size
 	{
@@ -157,6 +202,60 @@ Function OD_SizeOnDisk
 			}
 	}
 	
+	
+Function Check_Folder_Size
+	{
+		param(
+		$Folder_Path		
+		)	
+		
+		If (test-path $Folder_Path)
+			{
+				Try
+					{
+						$Get_Folder_Size = (gci $Folder_Path -recurse -file -ea silentlycontinue -ErrorVariable err | measure-object -property length -sum).sum
+					}
+				Catch 
+					{					
+						$_.Exception.ToString()
+						$Global:LastExitCode = 1
+					}			
+
+				If ($Get_Folder_Size -eq $null)
+					{
+						$folderSizeOutput = "0"
+					}ElseIf ( $Get_Folder_Size -lt 1KB ) 
+					{ 
+						$folderSizeOutput = "$("{0:N2}" -f $Get_Folder_Size) B" 
+					}ElseIf ( $Get_Folder_Size -lt 1MB ) 
+					{ 
+						$folderSizeOutput = "$("{0:N2}" -f ($Get_Folder_Size / 1KB)) KB" 
+					}ElseIf ( $Get_Folder_Size -lt 1GB ) 
+					{ 
+						$folderSizeOutput = "$("{0:N2}" -f ($Get_Folder_Size / 1MB)) MB" 
+					}ElseIf ( $Get_Folder_Size -lt 1TB ) 
+					{ 
+						$folderSizeOutput = "$("{0:N2}" -f ($Get_Folder_Size / 1GB)) GB" 
+					}ElseIf ( $Get_Folder_Size -lt 1PB ) 
+					{ 
+						$folderSizeOutput = "$("{0:N2}" -f ($Get_Folder_Size / 1TB)) TB" 
+					}ElseIf ( $Get_Folder_Size -ge 1PB ) 
+					{ 
+						$folderSizeOutput = "$("{0:N2}" -f ($Get_Folder_Size / 1PB)) PB" 
+					}	
+								
+				$Global:Full_Folder_Size = New-Object -TypeName psobject
+				$Full_Folder_Size | Add-Member -MemberType NoteProperty -Name Size_Formated -Value $folderSizeOutput
+				$Full_Folder_Size | Add-Member -MemberType NoteProperty -Name Size_Normal  -Value $Get_Folder_Size					
+			}
+		Else
+			{
+				write-host "Can not find the folder $Folder_Path" 									
+			}		
+		Return $Full_Folder_Size
+	}	
+	
+
 
 # Get Hard disk size info
 $Win32_LogicalDisk = Get-ciminstance Win32_LogicalDisk | where {$_.DeviceID -eq "C:"}
@@ -165,7 +264,7 @@ $Disk_Free_Space = $Win32_LogicalDisk.Freespace
 $Total_size_NoFormat = [Math]::Round(($Disk_Full_Size))
 $Free_size_formated = Format_Size -size $Disk_Free_Space
 $Total_size_formated = Format_Size -size $Disk_Full_Size
-[int]$Free_Space_percent = '{0:N0}' -f (($Disk_Free_Space / $Total_size_NoFormat * 100),1)
+[int]$Free_Space_percent = '{0:N0}' -f (($Disk_Free_Space / $Disk_Full_Size * 100),1)
 $Disk_Size_Status = @(
        [pscustomobject]@{"Total size"=$Total_size_formated;"Free space"=$Free_size_formated}
    )
@@ -201,26 +300,53 @@ If($Show_Keep_OnDevice_Alert -eq $True)
 
 
 # Get larger folders from C:\Users
-If($Show_Large_Folder_From_Users -eq $True)
+# If($Show_Large_Folder_From_Users -eq $True)
+	# {
+		# $MostWanted_Folders_Users = @()
+		# $Get_Users_Directories = Get-ChildItem "C:\users" -Directory -Recurse
+		# ForEach($Directory in $Get_Users_Directories)
+			# {
+				# $Dir_FullName = $Directory.FullName
+				# $Directory_Size_OnDisk = (OD_SizeOnDisk -Folder_to_check $Dir_FullName)[1]	
+				# $Directory_Formated_Size = Format_Size -size $Directory_Size_OnDisk		
+				# If($Directory_Size_OnDisk -gt 0)
+					# {
+						# $Obj = New-Object PSObject
+						# Add-Member -InputObject $Obj -MemberType NoteProperty -Name "Location" -Value $Dir_FullName	
+						# Add-Member -InputObject $Obj -MemberType NoteProperty -Name "Size" -Value $Directory_Formated_Size
+						# Add-Member -InputObject $Obj -MemberType NoteProperty -Name "FullSize" -Value $Directory_Size_OnDisk				
+						# $MostWanted_Folders_Users += $Obj				
+					# }		
+			# }
+		# $Top_10_Folders_Users = $MostWanted_Folders_Users | Sort-Object -Property FullSize -Descending | Select-Object Location, Size -First 20
+	# }
+	
+$MostWanted_Folders_Users = @()	
+$Current_User_Profile = Get-ChildItem Registry::\HKEY_USERS -ea silentlycontinue | Where-Object { Test-Path "$($_.pspath)\Volatile Environment" } | ForEach-Object { (Get-ItemProperty "$($_.pspath)\Volatile Environment").USERPROFILE }
+$Get_Users_Directories = Get-ChildItem $Current_User_Profile -Directory -Recurse -ea silentlycontinue
+ForEach($Directory in $Get_Users_Directories)
 	{
-		$MostWanted_Folders_Users = @()
-		$Get_Users_Directories = Get-ChildItem "C:\users" -Directory -Recurse
-		ForEach($Directory in $Get_Users_Directories)
+		$Dir_FullName = $Directory.FullName
+		$Directory_Size_OnDisk = (OD_SizeOnDisk -Folder_to_check $Dir_FullName)[1]	
+		$Directory_Formated_Size = Format_Size -size $Directory_Size_OnDisk		
+		If($Directory_Size_OnDisk -gt 0)
 			{
-				$Dir_FullName = $Directory.FullName
-				$Directory_Size_OnDisk = (OD_SizeOnDisk -Folder_to_check $Dir_FullName)[1]	
-				$Directory_Formated_Size = Format_Size -size $Directory_Size_OnDisk		
-				If($Directory_Size_OnDisk -gt 0)
-					{
-						$Obj = New-Object PSObject
-						Add-Member -InputObject $Obj -MemberType NoteProperty -Name "Location" -Value $Dir_FullName	
-						Add-Member -InputObject $Obj -MemberType NoteProperty -Name "Size" -Value $Directory_Formated_Size
-						Add-Member -InputObject $Obj -MemberType NoteProperty -Name "FullSize" -Value $Directory_Size_OnDisk				
-						$MostWanted_Folders_Users += $Obj				
-					}		
-			}
-		$Top_10_Folders_Users = $MostWanted_Folders_Users | Sort-Object -Property FullSize -Descending | Select-Object Location, Size -First 20
+				$Obj = New-Object PSObject
+				Add-Member -InputObject $Obj -MemberType NoteProperty -Name "Emplacement" -Value $Dir_FullName	
+				Add-Member -InputObject $Obj -MemberType NoteProperty -Name "Taille" -Value $Directory_Formated_Size
+				Add-Member -InputObject $Obj -MemberType NoteProperty -Name "FullSize" -Value $Directory_Size_OnDisk				
+				$MostWanted_Folders_Users += $Obj				
+			}		
 	}
+$Top_10_Folders_Users = $MostWanted_Folders_Users | Sort-Object -Property FullSize -Descending | Select-Object Emplacement, Taille -First 20
+	
+$OD_Path = (Get-ItemProperty "HKCU:\SOFTWARE\Microsoft\OneDrive\Accounts\Business1").UserFolder 	
+# $Get_Local_Content = Get-ChildItem "C:\" -Recurse -Force -ea silentlycontinue | Where-Object{(($_.fullname -notlike "*$OD_Path*"))}
+$Get_Local_Content = Get-ChildItem "C:\" -Recurse -Force -ea silentlycontinue | Where-Object{(($_.fullname -notlike "*OneDrive - METSYS*"))}
+$Get_Local_Content_Size = ($Get_Local_Content  | Measure-Object -Property Length -Sum).Sum 2> $null
+$Local_Content_Formated_Size = Format_Size -size $Get_Local_Content_Size	
+[int]$Local_Content_percent = '{0:N0}' -f (($Get_Local_Content_Size / $Disk_Full_Size * 100),1)	
+	
 
 
 # Get larger folders from C:
@@ -272,7 +398,7 @@ If($Show_OneDrive_Size -eq $True)
 		$OD_SizeDisk = $OD_Main_Size[1]	
 		$Formated_OD_FullSize = Format_Size -size $OD_FullSize
 		$Formated_OD_SizeOnDisk = Format_Size -size $OD_SizeDisk
-		$ODUsedSpaceOnDisk = [Math]::round((($OD_FullSize/$Total_size_NoFormat) * 100),2)
+		$ODUsedSpaceOnDisk = [Math]::round((($OD_SizeDisk/$Disk_Full_Size) * 100),2)
 
 		$OD_Documents_Size = (OD_SizeOnDisk -Folder_to_check $Documents_Path)
 		$OD_Documents_FullSize = $OD_Documents_Size[0]	
@@ -299,6 +425,174 @@ If($Show_OneDrive_Size -eq $True)
 			   [pscustomobject]@{Dossier='Pictures';"Total size"=$Formated_Pictures_Size;"Size on disk"=$Formated_Pictures_SizeOnDisk}	   
 		   )	
 	}
+
+
+$Total_size_full = $Disk_Full_Size
+$Free_Space = $Disk_Free_Space
+
+# Get data from temp and downloads
+$Global:Download_Path = (get-itemproperty "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders")."{374DE290-123F-4565-9164-39C4925E467B}"
+$Global:download_size = (Check_Folder_Size -Folder_Path $Download_Path)
+$Global:download_size_Normal = $download_size.Size_Normal
+$Global:download_size_Formated = $download_size.Size_Formated
+[int]$Global:download_Used_Size = '{0:N0}' -f (($download_size_Normal / $Total_size_full * 100),1)
+
+$Global:Windows_temp = (Check_Folder_Size -Folder_Path "c:\windows\temp").Size_Normal
+$Global:User_temp = (Check_Folder_Size -Folder_Path "$env:temp").Size_Normal
+$Global:Software_Distrib = (Check_Folder_Size -Folder_Path "C:\Windows\SoftwareDistribution").Size_Normal
+If(test-path "c:\windows.old")
+	{
+		$Global:Windows_Old = (Check_Folder_Size -Folder_Path "c:\windows.old").Size_Normal
+		$Global:Total_Temp_Files = $Windows_temp + $User_temp + $Software_Distrib + $Windows_Old		
+	}
+Else
+	{
+		$Global:Total_Temp_Files = $Windows_temp + $User_temp + $Software_Distrib 	
+	}
+[int]$Global:Temp_Files_Used_Size = '{0:N0}' -f (($Total_Temp_Files / $Total_size_full * 100),1)		
+
+	
+# [int]$Global:OneDrive_UsedSize_OnDisk = '{0:N0}' -f (($OD_SizeDisk / $Total_size_full * 100),1)			
+# [int]$Global:Free_Space_Used_Size = '{0:N0}' -f (($Free_Space / $Total_size_full * 100),1)				
+
+# If(test-path "C:\Windows\CCM\CCMCache")
+	# {
+		# [int]$Global:CCMCache_Used_Size = '{0:N0}' -f (($CCMCache_size_Normal / $Total_size_full * 100),1)		
+	# }
+	
+
+If ($Total_Temp_Files -eq $null)
+{
+	$Global:TempSizeOutput = "0"
+}ElseIf ( $Total_Temp_Files -lt 1KB ) 
+{ 
+	$Global:TempSizeOutput = "$("{0:N2}" -f $Total_Temp_Files) B" 
+}ElseIf ( $Total_Temp_Files -lt 1MB ) 
+{ 
+	$Global:TempSizeOutput = "$("{0:N2}" -f ($Total_Temp_Files / 1KB)) KB" 
+}ElseIf ( $Total_Temp_Files -lt 1GB ) 
+{ 
+	$Global:TempSizeOutput = "$("{0:N2}" -f ($Total_Temp_Files / 1MB)) MB" 
+}ElseIf ( $Total_Temp_Files -lt 1TB ) 
+{ 
+	$Global:TempSizeOutput = "$("{0:N2}" -f ($Total_Temp_Files / 1GB)) GB" 
+}ElseIf ( $Total_Temp_Files -lt 1PB ) 
+{ 
+	$Global:TempSizeOutput = "$("{0:N2}" -f ($Total_Temp_Files / 1TB)) TB" 
+}ElseIf ( $Total_Temp_Files -ge 1PB ) 
+{ 
+	$Global:TempSizeOutput = "$("{0:N2}" -f ($Total_Temp_Files / 1PB)) PB" 
+}		
+
+
+$Other_full_size = $Total_size_full - $Free_Space - $OD_SizeDisk - $Total_Temp_Files - $download_size_Normal	
+$Global:Other_full_size_Percent = '{0:N0}' -f (($Other_full_size / $Total_size_full * 100),1)	
+$Global:Formated_Other_full_size = (Format_Size -size $Other_full_size)	
+
+
+
+
+
+
+$Disk_Size_Status = @(
+       [pscustomobject]@{"Full size"=$Total_size_formated;"Local datas size"=$Local_Content_Formated_Size;"OneDrive"=$Formated_OD_SizeOnDisk;"Free space"=$Free_size_formated}
+   )
+
+$Disk_Size_Status_Percent = @(
+       [pscustomobject]@{"Full size"=$Total_size_formated;"Local datas size"=$Local_Content_percent;"OneDrive"=$ODUsedSpaceOnDisk;"Free space"=$Free_Space_percent}
+   )
+
+
+
+# $Pie_Chart_Path = "$env:temp\piechart.png"
+$Disk_Size_Pie = "$env:temp\Disk_Size_Pie.png"
+
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Windows.Forms.DataVisualization
+
+# Chart full disk
+$DataArray = @{"Loca datas"=$Local_Content_percent; "OneDrive size on disk"=$ODUsedSpaceOnDisk; "Free space"=$Free_Space_percent}
+
+$Chart = New-object System.Windows.Forms.DataVisualization.Charting.Chart
+
+# $Chart.Width = 700
+$Chart.Width = 650
+$Chart.Height = 200
+
+# chart colour palette (must match data array order)
+$chart.Palette = [System.Windows.Forms.DataVisualization.Charting.ChartColorPalette]::None
+$Chart.PaletteCustomColors = @( [System.Drawing.Color]::Brown,  [System.Drawing.Color]::Gold, [System.Drawing.Color]::Red, [System.Drawing.Color]::Green )
+$Chart.PaletteCustomColors = @( "#4472c4", "#ed7d31", "#a5a5a5")
+
+# create a chartarea to draw on and add to chart
+$ChartArea = New-Object System.Windows.Forms.DataVisualization.Charting.ChartArea
+
+$Chart.ChartAreas.Add($ChartArea)
+$ChartArea.Area3DStyle.Enable3D=$True
+$ChartArea.Area3DStyle.Inclination = 0
+
+# add data to chart
+[void]$Chart.Series.Add("Data")
+
+$chart.Series["Data"].ChartType = "Pie"
+$Chart.Series["Data"]["PieLabelStyle"] = "Outside"
+
+$Chart.Series["Data"]["PieLineColor"] = "Black"
+$Chart.Series["Data"]["PieDrawingStyle"] = "Default"
+$Chart.Series["Data"].Points.DataBindXY($DataArray.Keys, $DataArray.Values)
+$Chart.Series['Data'].Label = "#VALX (#VALY %)"
+
+$Chart.SaveImage($Disk_Size_Pie, "PNG")
+
+
+
+
+
+
+
+
+
+
+# Add-Type -AssemblyName System.Windows.Forms
+# Add-Type -AssemblyName System.Windows.Forms.DataVisualization
+
+$Local_Size_Pie = "$env:temp\Local_Size_Pie.png"
+
+# Chart full disk
+$Local_DataArray = @{"Other local datas"=$Other_full_size_Percent; "Temp files"=$Temp_Files_Used_Size; "Downloads folder"=$download_Used_Size}
+
+$Chart2 = New-object System.Windows.Forms.DataVisualization.Charting.Chart
+
+# $Chart.Width = 700
+$Chart2.Width = 650
+$Chart2.Height = 200
+
+# chart colour palette (must match data array order)
+$Chart2.Palette = [System.Windows.Forms.DataVisualization.Charting.ChartColorPalette]::None
+$Chart2.PaletteCustomColors = @( [System.Drawing.Color]::Brown,  [System.Drawing.Color]::Gold, [System.Drawing.Color]::Red, [System.Drawing.Color]::Green )
+$Chart2.PaletteCustomColors = @( "#4472c4", "#ed7d31", "#a5a5a5")
+
+# create a chartarea to draw on and add to chart
+$ChartArea2 = New-Object System.Windows.Forms.DataVisualization.Charting.ChartArea
+
+$Chart2.ChartAreas.Add($ChartArea2)
+$ChartArea2.Area3DStyle.Enable3D=$True
+$ChartArea2.Area3DStyle.Inclination = 0
+
+# add data to chart
+[void]$Chart2.Series.Add("Data")
+
+$Chart2.Series["Data"].ChartType = "Pie"
+$Chart2.Series["Data"]["PieLabelStyle"] = "Outside"
+
+$Chart2.Series["Data"]["PieLineColor"] = "Black"
+$Chart2.Series["Data"]["PieDrawingStyle"] = "Default"
+$Chart2.Series["Data"].Points.DataBindXY($Local_DataArray.Keys, $Local_DataArray.Values)
+$Chart2.Series['Data'].Label = "#VALX (#VALY %)"
+
+$Chart2.SaveImage($Local_Size_Pie, "PNG")
+
+
 
 
 
@@ -404,6 +698,14 @@ td
 	color:#009999;
 }
 
+.subtitle2
+{
+	font-family: Segoe UI Light, Arial;
+	font-weight:bold;	
+	font-size: 10pt;
+	color:#009999;
+}
+
 .titre_categorie
 {
 	font-family: Segoe UI Light, Arial;
@@ -435,12 +737,15 @@ If($Use_a_logo -eq $True)
 			}	
 	}
 
-$Title = "<p style='text-align:center;'><span class=titre_list>Larger content on your disk</span><br><span class=subtitle>Last update: $Date</span></p>"
-$Disk_Size_resume = "<p><span class=titre_categorie>Disk space usage (Free space percent: $Free_Space_percent %)</span></p>"
+$HTML_Title = "<p style='text-align:center;'><span class=titre_list>Larger content on your disk</span><br><span class=subtitle>Last update: $Date</span></p>"
+# $Disk_Size_resume = "<p><span class=titre_categorie>Disk space usage (Free space percent: $Free_Space_percent %)</span></p>"
+
+$Disk_Size_resume = "<p><span class=titre_categorie>Disk usage (Full size: $Total_size_formated, Free space: $Free_size_formated)</span></p>"
+
 
 If($Show_Keep_OnDevice_Alert -eq $True)
 	{
-		$Always_Keep_device = "oui"
+		# $Always_Keep_device = "oui"
 		If($Always_Keep_device -eq "Oui")
 			{
 				$OneDrive_Always_Keep_device_Title = "<p><span class=Alert_OneDrive_Yes>Be careful, option Always keep on device is selected at OneDrive root. This may have an impact on your disk size.</span></p>"		
@@ -449,19 +754,19 @@ If($Show_Keep_OnDevice_Alert -eq $True)
 		
 If($Show_Large_Folder_From_Users -eq $True)
 	{
-		$Title_Users_Folders = "<p><span class=titre_categorie>List of the 20 larger folders in C:\Users</span></p>"
+		$Title_Users_Folders = "<p><span class=titre_categorie>List of the 20 larger folders in $env:username profile</span></p>"
 		$Top10_Folders_In_User = $Top_10_Folders_Users | ConvertTo-HTML -Fragment	
 	}
 	
 If($Show_Large_Folders_From_C -eq $True)
 	{
-		$Title_C_Folders = "<p><span class=titre_categorie>List on larger folders in C:\</span></p>"
+		$Title_C_Folders = "<p><span class=titre_categorie>List on larger folders on your disk</span></p>"
 		$Top10_Folders_In_C = $Top_10_Folders_C | ConvertTo-HTML -Fragment
 	}	
 	
 If($Show_Large_Files_From_C -eq $True)
 	{
-		$Title_Big_Files = "<p><span class=titre_categorie>List of larger files in C:\</span></p>"
+		$Title_Big_Files = "<p><span class=titre_categorie>List of larger files on your disk</span></p>"
 		$Top_20_Large_Files = $Big_Files | ConvertTo-HTML -Fragment
 	}	
 	
@@ -479,7 +784,22 @@ If($Show_OneDrive_Size -eq $True)
 
 $Disk_Size = $Disk_Size_Status | ConvertTo-HTML -Fragment
 
-ConvertTo-HTML  -body "$Picture $Title<br>$Disk_Size_resume $Disk_Size<br>$Redirection_Status_Title $Known_Folder_Redirection_Status<br>$OneDrive_Size_Title $OneDrive_Always_Keep_device_Title $OneDrive_Size<br>$Title_Users_Folders $Top10_Folders_In_User<br>$Title_C_Folders $Top10_Folders_In_C<br>$Title_Big_Files $Top_20_Large_Files" -CSSUri $CSS_File | Out-File -encoding ASCII $HTML_DiskSize_Report		
+
+# $Pie_Chart_Path = "$Pie_Chart_Path"
+$Picture_Disk = "<img src=$Disk_Size_Pie>"
+$Disk_Size_Legend = "* (OneDrive size on disk: $Formated_OD_SizeOnDisk, Local: $Local_Content_Formated_Size)"
+
+
+# $Local_Size_Pie_Path = "$Local_Size_Pie"
+$Local_Disk_Picture_Disk = "<img src=$Local_Size_Pie>"
+$Disk_Size_Legend = "* (OneDrive size on disk: $Formated_OD_SizeOnDisk, Local: $Local_Content_Formated_Size)"
+
+
+# ConvertTo-HTML  -body "$Picture $HTML_Title<br>$Disk_Size_resume $Disk_Size<br>$Redirection_Status_Title $Known_Folder_Redirection_Status<br>$OneDrive_Size_Title $OneDrive_Always_Keep_device_Title $OneDrive_Size<br>$Title_Users_Folders $Top10_Folders_In_User<br>$Title_C_Folders $Top10_Folders_In_C<br>$Title_Big_Files $Top_20_Large_Files" -CSSUri $CSS_File | Out-File -encoding ASCII $HTML_DiskSize_Report		
+
+# ConvertTo-HTML  -body "$Picture $HTML_Title<br>$Disk_Size_resume $Disk_Used_Content<br>$Picture_Disk<br><span class=subtitle2><br>$Disk_Size_Legend</span><br><br>$Redirection_Status_Title $Known_Folder_Redirection_Status<br>$OneDrive_Always_Keep_device_Title<br>$Title_Users_Folders $Top10_Folders_In_User<br>$Title_C_Folders $Top10_Folders_In_C<br>$Title_Big_Files $Top_20_Large_Files" -CSSUri $CSS_File | Out-File -encoding ASCII $HTML_DiskSize_Report		
+ConvertTo-HTML  -body "$Picture $HTML_Title<br>$Disk_Size_resume $Disk_Used_Content<br>$Picture_Disk<br><span class=subtitle2><br>$Disk_Size_Legend</span><br>$Local_Disk_Picture_Disk<br>$Redirection_Status_Title $Known_Folder_Redirection_Status<br>$OneDrive_Always_Keep_device_Title<br>$Title_Users_Folders $Top10_Folders_In_User<br>$Title_C_Folders $Top10_Folders_In_C<br>$Title_Big_Files $Top_20_Large_Files" -CSSUri $CSS_File | Out-File -encoding ASCII $HTML_DiskSize_Report		
+
 
 
 #**************************************************************************************************************************
@@ -586,23 +906,29 @@ Else
 "@	
 	}
 
+$AppID = $Text_AppName
+$AppDisplayName = $Text_AppName
+Register-NotificationApp -AppID $Text_AppName -AppDisplayName $Text_AppName
+
+
+
 
 # Set the AppID
-$AppID = "Microsoft.CompanyPortal_8wekyb3d8bbwe!App"
+# $AppID = "Microsoft.CompanyPortal_8wekyb3d8bbwe!App"
 
 # Notification area
 # This part allows you to let the notification in the notification area
-$Notifications_Reg = 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Notifications\Settings'
-If(!(Test-Path -Path "$Notifications_Reg\$AppID")) 
-	{
-		New-Item -Path "$Notifications_Reg\$AppID" -Force
-		New-ItemProperty -Path "$Notifications_Reg\$AppID" -Name 'ShowInActionCenter' -Value 1 -PropertyType 'DWORD'
-	}
+# $Notifications_Reg = 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Notifications\Settings'
+# If(!(Test-Path -Path "$Notifications_Reg\$AppID")) 
+	# {
+		# New-Item -Path "$Notifications_Reg\$AppID" -Force
+		# New-ItemProperty -Path "$Notifications_Reg\$AppID" -Name 'ShowInActionCenter' -Value 1 -PropertyType 'DWORD'
+	# }
 
-If((Get-ItemProperty -Path "$Notifications_Reg\$AppID" -Name 'ShowInActionCenter' -ErrorAction SilentlyContinue).ShowInActionCenter -ne '1') 
-	{
-		New-ItemProperty -Path "$Notifications_Reg\$AppID" -Name 'ShowInActionCenter' -Value 1 -PropertyType 'DWORD' -Force
-	}
+# If((Get-ItemProperty -Path "$Notifications_Reg\$AppID" -Name 'ShowInActionCenter' -ErrorAction SilentlyContinue).ShowInActionCenter -ne '1') 
+	# {
+		# New-ItemProperty -Path "$Notifications_Reg\$AppID" -Name 'ShowInActionCenter' -Value 1 -PropertyType 'DWORD' -Force
+	# }
 
 
 # Toast creation and display
