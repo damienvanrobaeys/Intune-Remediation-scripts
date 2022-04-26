@@ -16,7 +16,7 @@ $Text_AppName = "Syst and Deploy informs you"
 
 # Buttons to display in the toast: set $True or $False
 $Show_OpenRecycleBin_Button = $True # It will add a button to open the Recycle bin
-$Show_ClearRecycleBin_Button = $False # It will add a button to clear the Recycle bin
+$Show_ClearRecycleBin_Button = $True # It will add a button to clear the Recycle bin
 
 
 #**********************************************************************************************************
