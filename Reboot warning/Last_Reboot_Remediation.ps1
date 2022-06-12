@@ -11,6 +11,9 @@ $Message = "`nTo ensure the stability and proper functioning of your system, con
 $Advice = "`nWe recommend you to restart your computer at least once a week"
 $Text_AppName = "Syst and Deploy informs you"
 
+# Buttons to display in the toast: set $True or $False
+$Show_RestartNow_Button = $True # It will add a button to open the Recycle bin
+
 # ***************************************************************************
 # 								Part to fill
 # ***************************************************************************
@@ -23,9 +26,32 @@ $HeroImage = "$env:TEMP\HeroPicture.png"
 [byte[]]$Bytes = [convert]::FromBase64String($Picture_Base64)
 [System.IO.File]::WriteAllBytes($HeroImage,$Bytes)		
 
+Function Set_Action
+	{
+		param(
+		$Action_Name		
+		)	
+		
+		$Main_Reg_Path = "HKCU:\SOFTWARE\Classes\$Action_Name"
+		$Command_Path = "$Main_Reg_Path\shell\open\command"
+		$CMD_Script = "C:\Windows\Temp\$Action_Name.cmd"
+		New-Item $Command_Path -Force
+		New-ItemProperty -Path $Main_Reg_Path -Name "URL Protocol" -Value "" -PropertyType String -Force | Out-Null
+		Set-ItemProperty -Path $Main_Reg_Path -Name "(Default)" -Value "URL:$Action_Name Protocol" -Force | Out-Null
+		Set-ItemProperty -Path $Command_Path -Name "(Default)" -Value $CMD_Script -Force | Out-Null		
+	}
 
+$Restart_Script = @'
+shutdown /r /f /t 300
+'@
 
+$Script_Export_Path = "C:\Windows\Temp"
 
+If($Show_RestartNow_Button -eq $True)
+	{
+		$Restart_Script | out-file "$Script_Export_Path\RestartScript.cmd" -Force -Encoding ASCII
+		Set_Action -Action_Name RestartScript	
+	}
 
 Function Register-NotificationApp($AppID,$AppDisplayName) {
     [int]$ShowInSettings = 0
@@ -116,6 +142,28 @@ $Title = $Title + " $Boot_Uptime_Days day(s)"
 
 $Scenario = 'reminder' 
 
+
+$Action_Restart = "RestartScript:"
+If(($Show_RestartNow_Button -eq $True))
+	{
+		$Actions = 
+@"
+  <actions>
+        <action activationType="protocol" arguments="$Action_Restart" content="Restart now" />		
+        <action activationType="protocol" arguments="Dismiss" content="Dismiss" />
+   </actions>	
+"@		
+	}
+Else
+	{
+		$Actions = 
+@"
+  <actions>
+        <action activationType="protocol" arguments="Dismiss" content="Dismiss" />
+   </actions>	
+"@		
+	}	
+
 [xml]$Toast = @"
 <toast scenario="$Scenario">
     <visual>
@@ -136,11 +184,10 @@ $Scenario = 'reminder'
 		</group>				
     </binding>
     </visual>
-  <actions>
-        <action arguments="" content="Dismiss" activationType="protocol" />		
-   </actions>	
+	$Actions
 </toast>
 "@	
+
 
 $AppID = $Text_AppName
 $AppDisplayName = $Text_AppName
