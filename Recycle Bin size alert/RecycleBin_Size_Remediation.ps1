@@ -105,7 +105,7 @@ start shell:RecycleBinFolder
 '@
 
 $ClearRecycleBin_Script = @'
-powershell -command Clear-RecycleBin -confirm:$false
+powershell -command Clear-RecycleBin -confirm:$false -force
 '@
 
 $Script_Export_Path = "C:\Windows\Temp"
