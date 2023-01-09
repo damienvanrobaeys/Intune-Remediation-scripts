@@ -384,9 +384,7 @@ $myHashTable = @{
 	"0xC0000221" = "STATUS_IMAGE_CHECKSUM_MISMATCH"
 	"0xDEADDEAD" = "MANUALLY_INITIATED_CRASH1"
 }	
-
-0x0000001a
-0X0000001A 
+ 
 
 $Minidump_Folder = "C:\Windows\Minidump"
 If(test-path $Minidump_Folder)
