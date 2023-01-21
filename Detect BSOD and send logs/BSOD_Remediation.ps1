@@ -1,34 +1,12 @@
-
-
-#***********************************************************************************
-# 									Part to fill
-#***********************************************************************************
-$ClientID = "" # Your SharePoint app client ID
-$Secret = '' # Your SharePoint app client ID	
-$Site_URL = "" # Your SharePoint site URL
-$Folder_Location = "" # Folder on your site where to upload logs
-$Use_Webhook = $False # Choose if you want to publish on a Teams channel(True or False)
-$Webhook = "" # Type the path of the webhook
-
-<# To create a webhook proceed as below:
-1. Go to your channel
-2. Click on the ...
-3. Click on Connectors
-4. Go to Incoming Webhook
-5. Type a name
-6. Click on Create
-7. Copy the Webhot path
-#>
-#***********************************************************************************
-# 									Part to fill
-#***********************************************************************************
-
 $Log_File = "C:\Windows\Debug\BSOD_Remediation.log"
 $Temp_folder = "C:\Windows\Temp"
 $DMP_Logs_folder = "$Temp_folder\DMP_Logs_folder"
-$ZIP_Name = "BSOD_$env:computername.zip"
-$DMP_Logs_folder_ZIP = "$Temp_folder\$ZIP_Name"
+$DMP_Logs_folder_ZIP = "$Temp_folder\BSOD_$env:computername.zip"
 
+$ClientID = ""
+$Secret = ''	
+$Site_URL = ""
+$Folder_Location = ""
 
 Function Write_Log
 	{
@@ -62,6 +40,7 @@ Function Install_Import_Module
 						Write_Log -Message_Type "ERROR" -Message "An issue occured while installing package Nuget"  
 						write-output "An issue occured while installing package Nuget"  
 						EXIT 1
+						Break
 					}
 			}
 		Else
@@ -110,8 +89,8 @@ Function Install_Import_Module
 						}                                                         
 				}                                                       
 			}	
-	}
-	
+	} 
+
 Function Export_Event_Logs
 	{
 		param(
@@ -122,7 +101,7 @@ Function Export_Event_Logs
 		Write_Log -Message_Type "INFO" -Message "Collecting logs from: $Log_To_Export"
 		Try
 			{
-				WEVTUtil export-log $Log_To_Export -ow:true /q:"*[System[TimeCreated[timediff(@SystemTime) <= 2592000000]]]" "$DMP_Logs_folder\$File_Name.evtx" | out-null
+				WEVTUtil export-log $Log_To_Export -ow:true /q:"*[System[TimeCreated[timediff(@SystemTime) <= 1296000000 ]]]" "$DMP_Logs_folder\$File_Name.evtx" | out-null
 				Write_Log -Message_Type "SUCCESS" -Message "Event log $File_Name.evtx has been successfully exported"
 			}
 		Catch
@@ -132,14 +111,14 @@ Function Export_Event_Logs
 	}		
 
 If(!(test-path $Log_File)){new-item $Log_File -type file -force | out-null}
-If(!(test-path $DMP_Logs_folder)){new-item $DMP_Logs_folder -type Directory -force | out-null}
-
-$Minidump_Folder = "C:\Windows\Minidump"
+If(test-path $DMP_Logs_folder){remove-item $DMP_Logs_folder -Force -Recurse}
+new-item $DMP_Logs_folder -type Directory -force | out-null
+If(test-path $DMP_Logs_folder_ZIP){Remove-Item $DMP_Logs_folder_ZIP -Force}
 
 Write_Log -Message_Type "INFO" -Message "A recent BSOD has been found"
 Write_Log -Message_Type "INFO" -Message "Date: $Last_DMP"
 
-# Export EVTX from last 30 days
+# Export EVTX from last 15 days
 Export_Event_Logs -Log_To_Export System -File_Name "System"		
 Export_Event_Logs -Log_To_Export Application -File_Name "Applications"		
 Export_Event_Logs -Log_To_Export Security -File_Name "Security"		
@@ -153,18 +132,23 @@ Export_Event_Logs -Log_To_Export "Microsoft-Windows-Kernel-IO/Operational" -File
 
 
 # Copy Dump files
-copy-item $Minidump_Folder $DMP_Logs_folder -Recurse -Force
-copy-item "C:\WINDOWS\MEMORY.DMP" $DMP_Logs_folder -Recurse -Force
+$Minidump_Folder = "C:\Windows\Minidump"
+If(test-path $Minidump_Folder){copy-item $Minidump_Folder $DMP_Logs_folder -Recurse -Force}
+# If(test-path "C:\WINDOWS\MEMORY.DMP"){copy-item "C:\WINDOWS\MEMORY.DMP" $DMP_Logs_folder -Recurse -Force}
 
-$Get_last_BugCheck_Event = (Get-EventLog system -Source bugcheck)[0]
-$Get_last_BugCheck_Event_Date = $Get_last_BugCheck_Event.TimeGenerated
-$Get_last_BugCheck_Event_MSG = $Get_last_BugCheck_Event.Message	
-$Get_last_BugCheck_Event_MSG | out-file "$DMP_Logs_folder\LastEvent_Message.txt"
+# $Get_BugCheck_Event = (Get-EventLog system -Source bugcheck -ea silentlycontinue)[0]
+$Get_BugCheck_Event = (Get-EventLog system -Source bugcheck -ea silentlycontinue)
+If($Get_BugCheck_Event -ne $null)
+	{
+		$Get_last_BugCheck_Event = $Get_BugCheck_Event[0]
+		$Get_last_BugCheck_Event_Date = $Get_last_BugCheck_Event.TimeGenerated
+		$Get_last_BugCheck_Event_MSG = $Get_last_BugCheck_Event.Message	
+		$Get_last_BugCheck_Event_MSG | out-file "$DMP_Logs_folder\LastEvent_Message.txt"		
+	}
 
 # ZIP DMP folder
 Try
 	{
-		If(test-path $DMP_Logs_folder_ZIP){Remove-Item $DMP_Logs_folder_ZIP -Force}
 		Add-Type -assembly "system.io.compression.filesystem"
 		[io.compression.zipfile]::CreateFromDirectory($DMP_Logs_folder, $DMP_Logs_folder_ZIP) 
 		Write_Log -Message_Type "SUCCESS" -Message "The ZIP file has been successfully created"	
@@ -196,35 +180,14 @@ Try
 	{
 		Add-PnPFile -Path $DMP_Logs_folder_ZIP -Folder $Folder_Location | out-null				
 		Write_Log -Message_Type "SUCCESS" -Message "Uploading file to SharePoint"	
+		Disconnect-pnponline			
 	}
 Catch
 	{
 		Write_Log -Message_Type "ERROR" -Message "Uploading file to SharePoint"	
 		write-output "Failed step: Uploading file to SharePoint"
+		Disconnect-pnponline	
 	}																						
 
-
-If($Use_Webhook -eq $True)
-	{
-		$Date = get-date
-		$MessageText = "A new BSOD occured on device <b>$env:computername</b>.<br><br>Date: $Date<br>Logs files have been uploaded in the below ZIP file: $ZIP_Name"
-		$MessageTitle = "A new BSOD ZIP has been uploaded"
-		$MessageColor = "#2874A6"
-
-		$Body = @{
-		'text'= $MessageText
-		'Title'= $MessageTitle
-		'themeColor'= $MessageColor
-		}
-
-
-		$Params = @{
-				 Headers = @{'accept'='application/json'}
-				 Body = $Body | ConvertTo-Json
-				 Method = 'Post'
-				 URI = $Webhook 
-		}
-		Invoke-RestMethod @Params
-	}
-
-Disconnect-pnponline	
+Remove-Item $DMP_Logs_folder -Force -Recurse
+Remove-Item $DMP_Logs_folder_ZIP -Force 
