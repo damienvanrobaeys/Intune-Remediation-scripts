@@ -1,13 +1,8 @@
-﻿##################################################################################################
-# 									Variables to fill
-##################################################################################################
-
-# Delay for BIOS update - if BIOS release is older than the delay, it will continue the process
+﻿# Set the reboot delay in the variable $Reboot_Delay
+# By default it's 5 days, meaning is the device has not rebooted since 5 days or more a warning will be displayed
 $Reboot_Delay = 5
 
-##################################################################################################
-# 									Variables to fill
-##################################################################################################
+
 	
 $Last_reboot = Get-ciminstance Win32_OperatingSystem | Select -Exp LastBootUpTime	
 # Check if fast boot is enabled: if enabled uptime may be wrong
@@ -38,7 +33,7 @@ If($Last_boot -eq $null)
 	}
 Else
 	{
-		If($Last_reboot -ge $Last_boot)
+		If($Last_reboot -gt $Last_boot)
 			{
 				$Uptime = $Last_reboot
 			}
