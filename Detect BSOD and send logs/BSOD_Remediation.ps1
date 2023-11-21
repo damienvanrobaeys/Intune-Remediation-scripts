@@ -3,10 +3,31 @@ $Temp_folder = "C:\Windows\Temp"
 $DMP_Logs_folder = "$Temp_folder\DMP_Logs_folder"
 $DMP_Logs_folder_ZIP = "$Temp_folder\BSOD_$env:computername.zip"
 
-$ClientID = ""
-$Secret = ''            
-$Site_URL = ""
-$Folder_Location = ""
+$Tenant = ""  # tenant name
+$ClientID = "" # azure app client id 
+$Secret = '' # azure app secret
+$SharePoint_SiteID = ""  # sharepoint site id	
+$SharePoint_Path = ""  # sharepoint main path
+$SharePoint_ExportFolder = ""  # folder where to upload file
+
+<#
+Example
+$SharePoint_Path = "https://systanddeploy.sharepoint.com/sites/Support"  # sharepoint main path
+$SharePoint_ExportFolder = "Windows/BSOD"  # folder where to upload file
+#>
+
+<#
+Getting Sharepoint site id
+I have the following Sharepoint site: https://systanddeploy.sharepoint.com/sites/Support
+In order to authenticate and upload file we need to get the id of the site.
+For this just open your browser and type:
+https://m365x53191121.sharepoint.com/sites/systanddeploy/_api/site/id
+#>
+
+<#
+Upload files on SharePoint with PowerShell and Graph API
+See my poste here: https://www.systanddeploy.com/2023/11/upload-files-to-sharepointteams-using.html
+#>
 
 Function Write_Log
 	{
@@ -102,56 +123,6 @@ Function Get_DeviceUpTime
 	}
 	
 
-$Is_Nuget_Installed = $False     
-$Sharepoint_Connected = $False	
-$Upload_file_status = $False	
-
-If(!(Get-PackageProvider | where {$_.Name -eq "Nuget"}))
-	{                                         
-		Try
-			{
-				[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-				Install-PackageProvider -Name Nuget -MinimumVersion 2.8.5.201 -Scope currentuser -Force -Confirm:$False | out-null                                                                                                                 
-				$Is_Nuget_Installed = $True 
-				Write_Log -Message_Type "INFO" -Message "Package Nuget installed"				
-			}
-		Catch
-			{
-				$Is_Nuget_Installed = $False  
-				Write_Log -Message_Type "ERROR" -Message "Package Nuget not installed"	
-				$Reported_error = $error[0].exception.message
-				write-output "KO (Nuget): $Reported_error"
-				EXIT 1
-			}
-	}
-Else
-	{
-		$Is_Nuget_Installed = $True      
-	}
-
-If($Is_Nuget_Installed -eq $True)
-	{
-		Try
-			{
-				$Check_Module_Ver = get-module -ListAvailable "PnP.PowerShell" | where {$_.Version -eq "1.12.0"}
-				If($Check_Module_Ver.count -eq 0)
-					{
-						Install-Module -Name "PnP.PowerShell" -RequiredVersion 1.12.0 -Force -AllowClobber -Scope currentuser
-					}
-				Import-Module pnp.powershell -RequiredVersion 1.12.0 -force
-				$PnP_Module_Status = $True	  
-				Write_Log -Message_Type "SUCCESS" -Message "Module PnP imported"					
-			}
-		Catch
-			{
-				$PnP_Module_Status = $False	 
-				Write_Log -Message_Type "ERROR" -Message "Module PnP not imported"	
-				$Reported_error = $error[0].exception.message
-				write-output "KO (Module): $Reported_error"
-				EXIT 1
-			}                                                       
-	}
-
 If(!(test-path $Log_File)){new-item $Log_File -type file -force | out-null}
 If(test-path $DMP_Logs_folder){remove-item $DMP_Logs_folder -Force -Recurse}
 new-item $DMP_Logs_folder -type Directory -force | out-null
@@ -233,33 +204,91 @@ Catch
 		EXIT 1			
 	}	
 
+
+
+# Authentification sur SharePoint et upload du fichier
+$Body = @{  
+    client_id = $ClientID
+    client_secret = $Secret
+    scope = "https://graph.microsoft.com/.default"   
+    grant_type = 'client_credentials'  
+}  
+  
+Write_Log -Message_Type "INFO" -Message "SharePoint connexion"	
+$Graph_Url = "https://login.microsoftonline.com/$($Tenant).onmicrosoft.com/oauth2/v2.0/token"  
+
 Try
 	{
-		Connect-PnPOnline -Url $Site_URL -ClientId $ClientID -ClientSecret $Secret -WarningAction Ignore									
-		Write_Log -Message_Type "SUCCESS" -Message "Connecting to SharePoint"				
+		$AuthorizationRequest = Invoke-RestMethod -Uri $Graph_Url -Method "Post" -Body $Body  
+		Write_Log -Message_Type "SUCCESS" -Message "Connected to SharePoint"	
 	}
 Catch
 	{
-		Write_Log -Message_Type "ERROR" -Message "Connecting to SharePoint"		
-		$Reported_error = $error[0].exception.message
-		write-output "KO (SP connexion): $Reported_error"
-		EXIT 1
-	}	
+		Write_Log -Message_Type "ERROR" -Message "Connexion to SharePoint failed"	
+		EXIT
+	}
 	
+$Access_token = $AuthorizationRequest.Access_token  
+$Header = @{  
+    Authorization = $AuthorizationRequest.access_token  
+    "Content-Type"= "application/json"  
+    'Content-Range' = "bytes 0-$($fileLength-1)/$fileLength"	
+}  
+
+$SharePoint_Graph_URL = "https://graph.microsoft.com/v1.0/sites/$SharePoint_SiteID/drives"  
+$BodyJSON = $Body | ConvertTo-Json -Compress  
+
+Write_Log -Message_Type "INFO" -Message "Getting SharePoint site info"	
+
 Try
 	{
-		Add-PnPFile -Path $DMP_Logs_folder_ZIP -Folder $Folder_Location | out-null				
-		Write_Log -Message_Type "SUCCESS" -Message "Uploading file to SharePoint"	
-		Disconnect-pnponline	
-		$Upload_file_status = $True
+		$Result = Invoke-RestMethod -Uri $SharePoint_Graph_URL -Method 'GET' -Headers $Header -ContentType "application/json"   
+		Write_Log -Message_Type "SUCCESS" -Message "Getting SharePoint site info"		
 	}
 Catch
 	{
-		Write_Log -Message_Type "ERROR" -Message "Uploading file to SharePoint"	
-		write-output "Failed step: Uploading file to SharePoint"
-		Disconnect-pnponline	
-		$Upload_file_status = $False					
-	}																						
+		Write_Log -Message_Type "ERROR" -Message "Getting SharePoint site info"	
+		EXIT
+	}
+
+$DriveID = $Result.value| Where-Object {$_.webURL -eq $SharePoint_Path } | Select-Object id -ExpandProperty id  
+
+$FileName = $DMP_Logs_folder_ZIP.Split("\")[-1]  
+$createUploadSessionUri = "https://graph.microsoft.com/v1.0/sites/$SharePoint_SiteID/drives/$DriveID/root:/$SharePoint_ExportFolder/$($fileName):/createUploadSession"
+
+Write_Log -Message_Type "INFO" -Message "File to upload: $FileName"	
+Write_Log -Message_Type "INFO" -Message "Preparing the file for the upload"	
+
+Try
+	{
+		$uploadSession = Invoke-RestMethod -Uri $createUploadSessionUri -Method 'POST' -Headers $Header -ContentType "application/json" 
+		Write_Log -Message_Type "SUCCESS" -Message "Preparing the file for the upload"			
+	}
+Catch
+	{
+		Write_Log -Message_Type "ERROR" -Message "Preparing the file for the upload"			
+		EXIT
+	}
+
+$fileInBytes = [System.IO.File]::ReadAllBytes($DMP_Logs_folder_ZIP)
+$fileLength = $fileInBytes.Length
+
+$headers = @{
+  'Content-Range' = "bytes 0-$($fileLength-1)/$fileLength"
+}
+
+Write_Log -Message_Type "INFO" -Message "Uploading file"	
+Try
+	{
+		$response = Invoke-RestMethod -Method 'Put' -Uri $uploadSession.uploadUrl -Body $fileInBytes -Headers $headers
+		Write_Log -Message_Type "SUCCESS" -Message "File has been uploaded"	
+		$Upload_file_status = $true
+	}
+Catch
+	{
+		Write_Log -Message_Type "ERROR" -Message "Failed to upload the file"
+		EXIT
+	}
 
 Remove-Item $DMP_Logs_folder -Force -Recurse
 Remove-Item $DMP_Logs_folder_ZIP -Force 
