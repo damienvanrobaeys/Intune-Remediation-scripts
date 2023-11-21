@@ -2,6 +2,8 @@ $Log_File = "C:\Windows\Debug\BSOD_Remediation.log"
 $Temp_folder = "C:\Windows\Temp"
 $DMP_Logs_folder = "$Temp_folder\DMP_Logs_folder"
 $DMP_Logs_folder_ZIP = "$Temp_folder\BSOD_$env:computername.zip"
+$Use_Webhook = $False # Choose if you want to publish on a Teams channel(True or False)
+$Webhook = "" # Type the path of the webhook
 
 $Tenant = ""  # tenant name
 $ClientID = "" # azure app client id 
@@ -27,6 +29,16 @@ https://m365x53191121.sharepoint.com/sites/systanddeploy/_api/site/id
 <#
 Upload files on SharePoint with PowerShell and Graph API
 See my poste here: https://www.systanddeploy.com/2023/11/upload-files-to-sharepointteams-using.html
+#>
+
+<# To create a webhook proceed as below:
+1. Go to your channel
+2. Click on the ...
+3. Click on Connectors
+4. Go to Incoming Webhook
+5. Type a name
+6. Click on Create
+7. Copy the Webhot path
 #>
 
 Function Write_Log
@@ -296,6 +308,29 @@ Remove-Item $DMP_Logs_folder_ZIP -Force
 If($Upload_file_status -eq $True)
 	{
 		write-output "File uploaded"	
+		
+		If($Use_Webhook -eq $True)
+			{
+				$Date = get-date
+				$MessageText = "A new BSOD occured on device <b>$env:computername</b>.<br><br>Date: $Date<br>Logs files have been uploaded in the below ZIP file: $ZIP_Name"
+				$MessageTitle = "A new BSOD ZIP has been uploaded"
+				$MessageColor = "#2874A6"
+
+				$Body = @{
+				'text'= $MessageText
+				'Title'= $MessageTitle
+				'themeColor'= $MessageColor
+				}
+
+
+				$Params = @{
+						 Headers = @{'accept'='application/json'}
+						 Body = $Body | ConvertTo-Json
+						 Method = 'Post'
+						 URI = $Webhook 
+				}
+				Invoke-RestMethod @Params
+			}		
 		EXIT 0			
 	}
 Else
