@@ -324,12 +324,12 @@ If($Upload_file_status -eq $True)
 
 
 				$Params = @{
-						 Headers = @{'accept'='application/json'}
+						 Headers = @{'Content-Type'='application/json'}
 						 Body = $Body | ConvertTo-Json
 						 Method = 'Post'
 						 URI = $Webhook 
 				}
-				Invoke-RestMethod @Params
+				Invoke-RestMethod @Params				
 			}		
 		EXIT 0			
 	}
