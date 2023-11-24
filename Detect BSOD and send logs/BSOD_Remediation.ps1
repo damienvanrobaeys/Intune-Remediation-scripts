@@ -2,6 +2,8 @@ $Log_File = "C:\Windows\Debug\BSOD_Remediation.log"
 $Temp_folder = "C:\Windows\Temp"
 $DMP_Logs_folder = "$Temp_folder\DMP_Logs_folder"
 $DMP_Logs_folder_ZIP = "$Temp_folder\BSOD_$env:computername.zip"
+$ZIP_Name = "BSOD_$env:computername.zip"
+
 $Use_Webhook = $False # Choose if you want to publish on a Teams channel(True or False)
 $Webhook = "" # Type the path of the webhook
 
