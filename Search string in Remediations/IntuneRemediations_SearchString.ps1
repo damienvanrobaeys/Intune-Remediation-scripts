@@ -29,7 +29,7 @@ ForEach($Script in $Get_Scripts)
 	$Script_Id = $Script.id
 
 	$Script_info = "$Remediations_URL/$Script_Id"
-	$Get_Script_info = (Invoke-MgGraphRequest -Uri $Script_info  -Method GET)	
+	$Get_Script_info = (Invoke-MgGraphRequest -Uri $Script_info  -Method GET -SkipHttpErrorCheck)	
 
 	$Detection = $Get_Script_info.detectionScriptContent	
 	If($Detection -eq $null){
@@ -82,4 +82,5 @@ ForEach($Script in $Get_Scripts)
 $Data_With_String = $Data_Array | where {$_."With string" -eq "Yes"}
 If($GridView){$Data_With_String | Out-GridView}
 If($PST){$Data_With_String | Export-Csv -Path "$env:temp\CVE-2025-54100_Script_Report.csv" -NoTypeInformation -Encoding UTF8;invoke-item $env:temp}
+
 
