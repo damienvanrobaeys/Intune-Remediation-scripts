@@ -511,7 +511,7 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Windows.Forms.DataVisualization
 
 # Chart full disk
-$DataArray = @{"Loca datas"=$Local_Content_percent; "OneDrive size on disk"=$ODUsedSpaceOnDisk; "Free space"=$Free_Space_percent}
+$DataArray = @{"Local datas"=$Local_Content_percent; "OneDrive size on disk"=$ODUsedSpaceOnDisk; "Free space"=$Free_Space_percent}
 
 $Chart = New-object System.Windows.Forms.DataVisualization.Charting.Chart
 
